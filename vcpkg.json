@@ -1,0 +1,12 @@
+{
+    "dependencies": [
+        "vulkan-headers",
+        "volk",
+        "vulkan-memory-allocator",
+        "glfw3",
+        "glm",
+        "stb",
+        "tinyobjloader",
+        "fmt"
+    ]
+}
