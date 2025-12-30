@@ -42,3 +42,22 @@ target_link_libraries(
         fmt::fmt
         vk_api
 )
+
+add_executable(
+    compute_main
+        compute_main.cpp
+)
+
+target_compile_definitions(
+    compute_main PRIVATE
+    PROJECT_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+target_link_libraries(
+    compute_main
+    PRIVATE
+        glfw
+        glm::glm # glm::glm-header-only
+        fmt::fmt
+        vk_api
+)
