@@ -21,16 +21,16 @@
 #include "glm_api.h" // IWYU pragma: keep
 
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+constexpr uint32_t WIDTH = 800;
+constexpr uint32_t HEIGHT = 600;
 
 const std::string VERTEX_SHADER_PATH = PROJECT_ROOT_DIR "/shaders/vert.spv";
 const std::string FRAGMENT_SHADER_PATH = PROJECT_ROOT_DIR "/shaders/frag.spv";
 const std::string MODEL_PATH = PROJECT_ROOT_DIR "/models/viking_room.obj";
 const std::string TEXTURE_PATH = PROJECT_ROOT_DIR "/textures/viking_room.png";
 
-const std::uint32_t MAX_FRAMES_IN_FLIGHT = 2; // 并行帧数量
-const std::uint32_t EXPECTED_SWAPCHAIN_IMAGE_COUNT = 3; // 期望的交换链图像数量
+constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT = 2; // 并行帧数量
+constexpr std::uint32_t EXPECTED_SWAPCHAIN_IMAGE_COUNT = 3; // 期望的交换链图像数量
 
 const std::vector<const char*> g_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -222,7 +222,7 @@ private:
         m_deviceTable.vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vmaDestroyBuffer(m_allocator, m_uniformBuffers[i], m_uniformBuffersAllocation[i]);
+            vmaDestroyBuffer(m_allocator, m_uniformBuffers[i], m_uniformBufferAllocations[i]);
         }
 
         m_deviceTable.vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
@@ -1295,8 +1295,8 @@ private:
         VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
         m_uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        m_uniformBuffersAllocation.resize(MAX_FRAMES_IN_FLIGHT);
-        m_uniformBuffersAllocationInfo.resize(MAX_FRAMES_IN_FLIGHT);
+        m_uniformBufferAllocations.resize(MAX_FRAMES_IN_FLIGHT);
+        m_uniformBufferAllocationInfos.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             createBufferWithVMA(
@@ -1306,9 +1306,9 @@ private:
                 0,
                 0,
                 m_uniformBuffers[i],
-                m_uniformBuffersAllocation[i],
-                &m_uniformBuffersAllocationInfo[i]);
-            VkMemoryPropertyFlags flags = getVmaAllocationMemoryProperties(m_uniformBuffersAllocation[i]);
+                m_uniformBufferAllocations[i],
+                &m_uniformBufferAllocationInfos[i]);
+            VkMemoryPropertyFlags flags = getVmaAllocationMemoryProperties(m_uniformBufferAllocations[i]);
             fmt::println("m_uniformBuffersAllocation[{}] memory property flags: 0x{:08x}", i, flags);
         }
     }
@@ -1661,7 +1661,7 @@ private:
         // The easiest way to compensate for that is to flip the sign on the scaling factor of the Y axis in the projection matrix.
         // If you don't do this, then the image will be rendered upside down.
 
-        memcpy(m_uniformBuffersAllocationInfo[currentImage].pMappedData, &ubo, sizeof(ubo));
+        memcpy(m_uniformBufferAllocationInfos[currentImage].pMappedData, &ubo, sizeof(ubo));
         // vmaCopyMemoryToAllocation(m_allocator, &ubo, m_uniformBuffersAllocation[currentImage], 0, sizeof(ubo));
     }
 
@@ -2031,8 +2031,8 @@ private:
     VmaAllocation                m_indexBufferAllocation;
 
     std::vector<VkBuffer>        m_uniformBuffers;
-    std::vector<VmaAllocation>   m_uniformBuffersAllocation;
-    std::vector<VmaAllocationInfo> m_uniformBuffersAllocationInfo;
+    std::vector<VmaAllocation>   m_uniformBufferAllocations;
+    std::vector<VmaAllocationInfo> m_uniformBufferAllocationInfos;
 
     VkDescriptorPool             m_descriptorPool;
     std::vector<VkDescriptorSet> m_descriptorSets;

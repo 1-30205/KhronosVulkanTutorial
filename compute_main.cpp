@@ -1,7 +1,9 @@
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
 #include <fstream>
+#include <random>
 #include <stdexcept>
 #include <algorithm>
 #include <chrono>
@@ -16,18 +18,18 @@
 #include <vk_api.h>
 #include <GLFW/glfw3.h>
 #include <fmt/format.h>
-#include <vulkan/vulkan_core.h>
 #include "glm_api.h" // IWYU pragma: keep
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+constexpr uint32_t WIDTH = 800;
+constexpr uint32_t HEIGHT = 600;
+constexpr uint32_t PARTICLE_COUNT = 8192;
 
 const std::string COMPUTE_SHADER_PATH = PROJECT_ROOT_DIR "/shaders/compute_shader_comp.spv";
 const std::string VERTEX_SHADER_PATH = PROJECT_ROOT_DIR "/shaders/compute_shader_vert.spv";
 const std::string FRAGMENT_SHADER_PATH = PROJECT_ROOT_DIR "/shaders/compute_shader_frag.spv";
 
-const std::uint32_t MAX_FRAMES_IN_FLIGHT = 2; // 并行帧数量
-const std::uint32_t EXPECTED_SWAPCHAIN_IMAGE_COUNT = 3; // 期望的交换链图像数量
+constexpr std::uint32_t MAX_FRAMES_IN_FLIGHT = 2; // 并行帧数量
+constexpr std::uint32_t EXPECTED_SWAPCHAIN_IMAGE_COUNT = 3; // 期望的交换链图像数量
 
 const std::vector<const char*> g_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -157,9 +159,9 @@ private:
         createComputePipeline();
         createCommandPool();
         createShaderStorageBuffers();
-        // createUniformBuffers();
-        // createDescriptorPool();
-        // createComputeDescriptorSets();
+        createUniformBuffers();
+        createDescriptorPool();
+        createComputeDescriptorSets();
         // createCommandBuffers();
         // createComputeCommandBuffers();
         // createSyncObjects();
@@ -678,7 +680,89 @@ private:
     }
 
     void createShaderStorageBuffers() {
+        // Initialize particles
+        std::default_random_engine rndEngine(static_cast<uint64_t>(time(nullptr)));
+        std::uniform_real_distribution rndDist(0.0f, 1.0f);
 
+        std::vector<Particle> particles(PARTICLE_COUNT);
+        for (auto &particle : particles) {
+            float r = 0.25f * sqrtf(rndDist(rndEngine));
+            float theta = rndDist(rndEngine) * 2.0f * 3.14159265358979323846f;
+            float x = r * cosf(theta) * HEIGHT / WIDTH;
+            float y = r * sinf(theta);
+            particle.position = glm::vec2(x, y);
+            particle.velocity = normalize(glm::vec2(x, y)) * 0.00025f;
+            particle.color = glm::vec4(rndDist(rndEngine), rndDist(rndEngine), rndDist(rndEngine), 1.0f);
+        }
+
+        VkDeviceSize bufferSize = sizeof(Particle) * PARTICLE_COUNT;
+        VkBuffer stagingBuffer{};
+        VmaAllocation stagingBufferAllocation{};
+        createBufferWithVMA(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, 0, 0, stagingBuffer, stagingBufferAllocation);
+        vmaCopyMemoryToAllocation(m_allocator, particles.data(), stagingBufferAllocation, 0, bufferSize);
+        // 是否需要释放stagingBuffer?
+
+        m_shaderStorageBuffers.clear();
+        m_shaderStorageBufferAllocations.clear();
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            VkBuffer shaderStorageBuffer;
+            VmaAllocation shaderStorageBufferAllocation;
+            createBufferWithVMA(
+                bufferSize,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                0, 0, 0,
+                shaderStorageBuffer,
+                shaderStorageBufferAllocation);
+            m_shaderStorageBuffers.push_back(shaderStorageBuffer);
+            m_shaderStorageBufferAllocations.push_back(shaderStorageBufferAllocation);
+        }
+    }
+
+    void createUniformBuffers() {
+        m_uniformBuffers.clear();
+        m_uniformBufferAllocations.clear();
+        m_uniformBufferAllocationInfo.clear();
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            VkDeviceSize bufferSize = sizeof (UniformBufferObject);
+            VkBuffer buffer{};
+            VmaAllocation bufferAllocation{};
+            VmaAllocationInfo bufferAllocationInfo{};
+            createBufferWithVMA(
+                bufferSize,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                0, 0,
+                buffer, bufferAllocation, &bufferAllocationInfo);
+                m_uniformBuffers.push_back(buffer);
+                m_uniformBufferAllocations.push_back(bufferAllocation);
+                m_uniformBufferAllocationInfo.push_back(bufferAllocationInfo);
+        }
+    }
+
+    void createDescriptorPool() {
+        std::array<VkDescriptorPoolSize, 2> poolSizes{};
+        poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(2 * MAX_FRAMES_IN_FLIGHT);
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        // poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+
+        if (m_deviceTable.vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+
+    void createComputeDescriptorSets() {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_computeDescriptorSetLayout);
+        VkDescriptorSetAllocateInfo allocInfo{};
     }
 
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
@@ -1017,7 +1101,7 @@ private:
 
     std::vector<VkBuffer>        m_uniformBuffers;
     std::vector<VmaAllocation>   m_uniformBufferAllocations;
-    std::vector<void *>          m_uniformBufferMapped;
+    std::vector<VmaAllocationInfo> m_uniformBufferAllocationInfo;
 
     VkDescriptorPool             m_descriptorPool;
     std::vector<VkDescriptorSet> m_computeDescriptorSets;
