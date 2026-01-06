@@ -461,9 +461,9 @@ private:
         deviceFeatures2.features.sampleRateShading = VK_TRUE;
 
         // 启用VK_KHR_buffer_device_address扩展
-        VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
-        bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-        bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+        VkPhysicalDeviceVulkan12Features vk12Features{};
+        vk12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        vk12Features.bufferDeviceAddress = VK_TRUE;
 
         // 启用VK_KHR_synchronization2/VK_KHR_maintenance4/VK_KHR_dynamic_rendering扩展
         VkPhysicalDeviceVulkan13Features vk13Features{};
@@ -477,8 +477,8 @@ private:
         extendedDynamicStateFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
         extendedDynamicStateFeatures.extendedDynamicState = VK_TRUE;
 
-        deviceFeatures2.pNext = &bufferDeviceAddressFeatures;
-        bufferDeviceAddressFeatures.pNext = &vk13Features;
+        deviceFeatures2.pNext = &vk12Features;
+        vk12Features.pNext = &vk13Features;
         vk13Features.pNext = &extendedDynamicStateFeatures;
 
         std::vector<const char*> deviceExtensions = g_deviceExtensions;
@@ -533,7 +533,7 @@ private:
         //   been promoted to Vulkan 1.1.
         // VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT
         //   vulkan ext: VK_KHR_buffer_device_address(vk1.2 core).
-        //   Found as available and enabled device feature `VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress`
+        //   Found as available and enabled device feature `VkPhysicalDeviceVulkan12Features::bufferDeviceAddress`
         // VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE4_BIT
         //   vulkan ext: VK_KHR_maintenance4(vk1.3 core).
         //   Found as available and enabled device feature `VkPhysicalDeviceMaintenance4Features::maintenance4`
@@ -1666,7 +1666,12 @@ private:
     }
 
     void drawFrame() {
-        m_deviceTable.vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+        // Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex,
+		//       while renderFinishedSemaphores is indexed by imageIndex
+        VkResult fenceResult = m_deviceTable.vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+        if (fenceResult != VK_SUCCESS) {
+            throw std::runtime_error("failed to wait for fences!");
+        }
 
         uint32_t imageIndex;
         // image可用时，m_imageAvailableSemaphores[m_currentFrame]会被设置为signaled状态。
