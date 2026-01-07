@@ -173,12 +173,12 @@ private:
         createVMA();
         createSwapChain();
         createImageViews();
-        createDescriptorSetLayout();
+        createColorResources();
         m_depthFormat = findDepthFormat();
+        createDepthResources();
+        createDescriptorSetLayout();
         createGraphicsPipeline();
         createCommandPool();
-        createColorResources();
-        createDepthResources();
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
@@ -203,65 +203,109 @@ private:
 
     void cleanupSwapChain() {
         m_deviceTable.vkDestroyImageView(m_device, m_depthImageView, nullptr);
+        m_depthImageView = VK_NULL_HANDLE;
         vmaDestroyImage(m_allocator, m_depthImage, m_depthImageAllocation);
+        m_depthImage = VK_NULL_HANDLE;
+        m_depthImageAllocation = VK_NULL_HANDLE;
 
         m_deviceTable.vkDestroyImageView(m_device, m_colorImageView, nullptr);
+        m_colorImageView = VK_NULL_HANDLE;
         vmaDestroyImage(m_allocator, m_colorImage, m_colorImageAllocation);
+        m_colorImage = VK_NULL_HANDLE;
+        m_colorImageAllocation = VK_NULL_HANDLE;
 
         for (auto imageView : m_swapChainImageViews) {
             m_deviceTable.vkDestroyImageView(m_device, imageView, nullptr);
         }
-
+        m_swapChainImageViews.clear();
         m_deviceTable.vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
+        m_swapChain = VK_NULL_HANDLE;
     }
 
     void cleanup() {
-        cleanupSwapChain();
+        for (auto semaphore : m_renderFinishedSemaphores) {
+            m_deviceTable.vkDestroySemaphore(m_device, semaphore, nullptr);
+        }
+        m_renderFinishedSemaphores.clear();
+        for (auto semaphore : m_imageAvailableSemaphores) {
+            m_deviceTable.vkDestroySemaphore(m_device, semaphore, nullptr);
+        }
+        m_imageAvailableSemaphores.clear();
+        for (auto fence : m_inFlightFences) {
+            m_deviceTable.vkDestroyFence(m_device, fence, nullptr);
+        }
+        m_inFlightFences.clear();
 
-        m_deviceTable.vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
-        m_deviceTable.vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+        for (auto commandBuffer : m_commandBuffers) {
+            m_deviceTable.vkFreeCommandBuffers(m_device, m_commandPool, 1, &commandBuffer);
+        }
+        m_commandBuffers.clear();
+
+        for (auto descriptorSet : m_descriptorSets) {
+            m_deviceTable.vkFreeDescriptorSets(m_device, m_descriptorPool, 1, &descriptorSet);
+        }
+        m_descriptorSets.clear();
+        m_deviceTable.vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
+        m_descriptorPool = VK_NULL_HANDLE;
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             vmaDestroyBuffer(m_allocator, m_uniformBuffers[i], m_uniformBufferAllocations[i]);
         }
-
-        m_deviceTable.vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
-
-        m_deviceTable.vkDestroySampler(m_device, m_textureSampler, nullptr);
-
-        m_deviceTable.vkDestroyImageView(m_device, m_textureImageView, nullptr);
-        vmaDestroyImage(m_allocator, m_textureImage, m_textureImageAllocation);
-
-        m_deviceTable.vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
+        m_uniformBuffers.clear();
+        m_uniformBufferAllocations.clear();
 
         vmaDestroyBuffer(m_allocator, m_indexBuffer, m_indexBufferAllocation);
+        m_indexBuffer = VK_NULL_HANDLE;
+        m_indexBufferAllocation = VK_NULL_HANDLE;
 
         vmaDestroyBuffer(m_allocator, m_vertexBuffer, m_vertexBufferAllocation);
+        m_vertexBuffer = VK_NULL_HANDLE;
+        m_vertexBufferAllocation = VK_NULL_HANDLE;
 
-        for (auto fence : m_inFlightFences) {
-            m_deviceTable.vkDestroyFence(m_device, fence, nullptr);
-        }
-        for (auto semaphore : m_imageAvailableSemaphores) {
-            m_deviceTable.vkDestroySemaphore(m_device, semaphore, nullptr);
-        }
-        for (auto semaphore : m_renderFinishedSemaphores) {
-            m_deviceTable.vkDestroySemaphore(m_device, semaphore, nullptr);
-        }
+        m_deviceTable.vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
+        m_graphicsPipeline = VK_NULL_HANDLE;
+        m_deviceTable.vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+        m_pipelineLayout = VK_NULL_HANDLE;
 
+        m_deviceTable.vkDestroySampler(m_device, m_textureSampler, nullptr);
+        m_textureSampler = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyImageView(m_device, m_textureImageView, nullptr);
+        m_textureImageView = VK_NULL_HANDLE;
+        vmaDestroyImage(m_allocator, m_textureImage, m_textureImageAllocation);
+        m_textureImage = VK_NULL_HANDLE;
+        m_textureImageAllocation = VK_NULL_HANDLE;
 
         m_deviceTable.vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+        m_commandPool = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
+        m_graphicsPipeline = VK_NULL_HANDLE;
+        m_deviceTable.vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+        m_pipelineLayout = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
+        m_descriptorSetLayout = VK_NULL_HANDLE;
+
+        cleanupSwapChain();
 
         vmaDestroyAllocator(m_allocator);
+        m_allocator = VK_NULL_HANDLE;
 
         m_deviceTable.vkDestroyDevice(m_device, nullptr);
+        m_device = VK_NULL_HANDLE;
         m_deviceTable = {};
+
+        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
+        m_surface = VK_NULL_HANDLE;
 
         if (g_enableValidationLayers) {
             DestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
+            m_debugMessenger = VK_NULL_HANDLE;
         }
 
-        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
         vkDestroyInstance(m_instance, nullptr);
+        m_instance = VK_NULL_HANDLE;
 
         volkFinalize();
 
@@ -1629,11 +1673,11 @@ private:
         // immediately since the fence is already signaled
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        m_imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
         m_inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+        m_imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            if (m_deviceTable.vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != VK_SUCCESS ||
-                m_deviceTable.vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]) != VK_SUCCESS) {
+            if (m_deviceTable.vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]) != VK_SUCCESS ||
+                m_deviceTable.vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create synchronization objects for a frame!");
             }
         }
@@ -1963,23 +2007,6 @@ private:
         return VK_FALSE;
     }
 
-    VkPhysicalDevice chooseSuitableDevice(const std::vector<VkPhysicalDevice>& devices) {
-        if (devices.empty()) {
-            return VK_NULL_HANDLE;
-        }
-
-        for (const auto& device : devices) {
-            VkPhysicalDeviceProperties deviceProperties;
-            vkGetPhysicalDeviceProperties(device, &deviceProperties);
-            VkPhysicalDeviceFeatures deviceFeatures;
-            vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-            fmt::println("device type: {}", static_cast<int>(deviceProperties.deviceType));
-        }
-
-        return devices.front();
-    }
-
 private:
     GLFWwindow* m_window{ nullptr };
 
@@ -2007,12 +2034,6 @@ private:
     VkExtent2D                   m_swapChainExtent;
     std::vector<VkImageView>     m_swapChainImageViews;
 
-    VkDescriptorSetLayout        m_descriptorSetLayout;
-    VkPipelineLayout             m_pipelineLayout;
-    VkPipeline                   m_graphicsPipeline;
-
-    VkCommandPool                m_commandPool;
-
     VkImage                      m_colorImage;
     VmaAllocation                m_colorImageAllocation;
     VkImageView                  m_colorImageView;
@@ -2021,6 +2042,12 @@ private:
     VkImage                      m_depthImage;
     VmaAllocation                m_depthImageAllocation;
     VkImageView                  m_depthImageView;
+
+    VkDescriptorSetLayout        m_descriptorSetLayout;
+    VkPipelineLayout             m_pipelineLayout;
+    VkPipeline                   m_graphicsPipeline;
+
+    VkCommandPool                m_commandPool;
 
     uint32_t                     m_mipLevels;
     VkImage                      m_textureImage;
@@ -2064,5 +2091,6 @@ int main(int argc, const char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    fmt::println("vulkan application exit");
     return EXIT_SUCCESS;
 }

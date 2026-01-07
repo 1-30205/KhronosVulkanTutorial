@@ -184,11 +184,85 @@ private:
         for (auto imageView : m_swapChainImageViews) {
             m_deviceTable.vkDestroyImageView(m_device, imageView, nullptr);
         }
+        m_swapChainImageViews.clear();
 
         m_deviceTable.vkDestroySwapchainKHR(m_device, m_swapChain, nullptr);
+        m_swapChain = VK_NULL_HANDLE;
     }
 
     void cleanup() {
+        for (auto fence : m_inFlightFences) {
+            m_deviceTable.vkDestroyFence(m_device, fence, nullptr);
+        }
+        m_inFlightFences.clear();
+        m_deviceTable.vkDestroySemaphore(m_device, m_semaphore, nullptr);
+        m_semaphore = VK_NULL_HANDLE;
+
+        for (auto commandBuffer : m_computeCommandBuffers) {
+            m_deviceTable.vkFreeCommandBuffers(m_device, m_commandPool, 1, &commandBuffer);
+        }
+        m_computeCommandBuffers.clear();
+        for (auto commandBuffer : m_commandBuffers) {
+            m_deviceTable.vkFreeCommandBuffers(m_device, m_commandPool, 1, &commandBuffer);
+        }
+        m_commandBuffers.clear();
+
+        for (auto descriptorSet : m_computeDescriptorSets) {
+            m_deviceTable.vkFreeDescriptorSets(m_device, m_descriptorPool, 1, &descriptorSet);
+        }
+        m_computeDescriptorSets.clear();
+        m_deviceTable.vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
+        m_descriptorPool = VK_NULL_HANDLE;
+
+        for (size_t i = 0; i < m_uniformBuffers.size(); i++) {
+            vmaDestroyBuffer(m_allocator, m_uniformBuffers[i], m_uniformBufferAllocations[i]);
+        }
+        m_uniformBuffers.clear();
+        m_uniformBufferAllocations.clear();
+
+        for (size_t i = 0; i < m_shaderStorageBuffers.size(); i++) {
+            vmaDestroyBuffer(m_allocator, m_shaderStorageBuffers[i], m_shaderStorageBufferAllocations[i]);
+        }
+        m_shaderStorageBuffers.clear();
+        m_shaderStorageBufferAllocations.clear();
+
+        m_deviceTable.vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+        m_commandPool = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyPipeline(m_device, m_computePipeline, nullptr);
+        m_computePipeline = VK_NULL_HANDLE;
+        m_deviceTable.vkDestroyPipelineLayout(m_device, m_computePipelineLayout, nullptr);
+        m_computePipelineLayout = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
+        m_graphicsPipeline = VK_NULL_HANDLE;
+        m_deviceTable.vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+        m_pipelineLayout = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyDescriptorSetLayout(m_device, m_computeDescriptorSetLayout, nullptr);
+        m_computeDescriptorSetLayout = VK_NULL_HANDLE;
+
+        cleanupSwapChain();
+
+        vmaDestroyAllocator(m_allocator);
+        m_allocator = VK_NULL_HANDLE;
+
+        m_deviceTable.vkDestroyDevice(m_device, nullptr);
+        m_device = VK_NULL_HANDLE;
+        m_deviceTable = {};
+
+        if (g_enableValidationLayers) {
+            DestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
+            m_debugMessenger = VK_NULL_HANDLE;
+        }
+
+        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
+        m_surface = VK_NULL_HANDLE;
+
+        vkDestroyInstance(m_instance, nullptr);
+        m_instance = VK_NULL_HANDLE;
+
+        volkFinalize();
 
         glfwDestroyWindow(m_window);
 
@@ -1432,23 +1506,6 @@ private:
         return VK_FALSE;
     }
 
-    VkPhysicalDevice chooseSuitableDevice(const std::vector<VkPhysicalDevice>& devices) {
-        if (devices.empty()) {
-            return VK_NULL_HANDLE;
-        }
-
-        for (const auto& device : devices) {
-            VkPhysicalDeviceProperties deviceProperties;
-            vkGetPhysicalDeviceProperties(device, &deviceProperties);
-            VkPhysicalDeviceFeatures deviceFeatures;
-            vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-            fmt::println("device type: {}", static_cast<int>(deviceProperties.deviceType));
-        }
-
-        return devices.front();
-    }
-
     void createBufferWithVMA(VkDeviceSize size,
                              VkBufferUsageFlags usage,
                              VmaAllocationCreateFlags allocFlags,
@@ -1596,5 +1653,6 @@ int main(int argc, const char* argv[]) {
         fmt::println("error: {}", e.what());
         return EXIT_FAILURE;
     }
+    fmt::println("vulkan compute application exit");
     return EXIT_SUCCESS;
 }
