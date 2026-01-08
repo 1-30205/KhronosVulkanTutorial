@@ -6,14 +6,12 @@
 #include <random>
 #include <stdexcept>
 #include <algorithm>
-#include <chrono>
 #include <vector>
 #include <limits>
 #include <array>
 #include <optional>
 #include <set>
 #include <map>
-#include <unordered_map>
 
 #include <vk_api.h>
 #include <GLFW/glfw3.h>
@@ -1144,6 +1142,33 @@ private:
         VkCommandBufferBeginInfo commandBufferBeginInfo{};
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         m_deviceTable.vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+
+        // 无需添加内存屏障来保证计算 shader 写入的数据对顶点 shader 可见
+        // Vulkan规范规定，信号量操作会创建隐式的内存依赖： 当被等待的操作的信号量被发出信号时，会在等待的操作和被发出信号的操作之
+        // 间建立隐式内存依赖。被发出信号的操作发生的任何内存写入对等待的操作都是可见的。
+        // 1. 作用阶段：这个隐式依赖的源阶段是 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT（等待方提交时指定的等待阶段），
+        // 目标阶段也是 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT。这是一个非常宽泛的依赖。
+        // 2. 不能替代所有屏障：正因为其宽泛，信号量不能解决同一命令缓冲区内部的精细同步问题。例如，在图形管线中，顶点着色器的写入
+        // 和片段着色器的读取之间，仍然需要显式的屏障。
+        // 3. 与管线阶段的结合：提交命令时的 pWaitDstStageMask 参数（等待目标阶段掩码）是用来告知驱动“我的命令在哪个阶段需要等待
+        // 信号量”。这允许驱动进行优化（比如，让几何处理先开始，只在片段着色阶段等待），但不改变信号量所建立的隐式内存依赖的完整范
+        // 围。最终的可见性保证仍然是覆盖所有写入的。
+        // VkBufferMemoryBarrier2 barrier{};
+        // barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+        // barrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        // barrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+        // barrier.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT;
+        // barrier.dstAccessMask = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+        // barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        // barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        // barrier.buffer = m_shaderStorageBuffers[m_frameIndex];
+        // barrier.offset = 0;
+        // barrier.size = VK_WHOLE_SIZE;
+        // VkDependencyInfo dependencyInfo{};
+        // dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        // dependencyInfo.bufferMemoryBarrierCount = 1;
+        // dependencyInfo.pBufferMemoryBarriers = &barrier;
+        // m_deviceTable.vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 
         // Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
         transitionImageLayout2(
