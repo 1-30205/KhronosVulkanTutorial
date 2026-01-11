@@ -150,18 +150,18 @@ private:
         pickPhysicalDevice();
         createLogicalDevice();
         createVMA();
+        createCommandPool();
+        createCommandBuffers();
+        createComputeCommandBuffers();
         createSwapChain();
         createImageViews();
         createComputeDescriptorSetLayout();
         createGraphicsPipeline();
         createComputePipeline();
-        createCommandPool();
         createShaderStorageBuffers();
         createUniformBuffers();
         createDescriptorPool();
         createComputeDescriptorSets();
-        createCommandBuffers();
-        createComputeCommandBuffers();
         createSyncObjects();
     }
 
@@ -170,9 +170,9 @@ private:
             glfwPollEvents();
             drawFrame();
             // We want to animate the particle system using the last frames time to get smooth, frame-rate independent animation
-			double currentTime = glfwGetTime();
-			m_lastFrameTime      = (currentTime - m_lastTime) * 1000.0;
-			m_lastTime           = currentTime;
+            double currentTime = glfwGetTime();
+            m_lastFrameTime      = (currentTime - m_lastTime) * 1000.0;
+            m_lastTime           = currentTime;
         }
 
         m_deviceTable.vkDeviceWaitIdle(m_device);
@@ -264,7 +264,7 @@ private:
 
         glfwDestroyWindow(m_window);
 
-		glfwTerminate();
+        glfwTerminate();
     }
 
     void recreateSwapChain() {
@@ -538,6 +538,43 @@ private:
         }
     }
 
+    void createCommandPool() {
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.queueFamilyIndex = m_queueFamilyIdx;
+
+        if (m_deviceTable.vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create command pool!");
+        }
+    }
+
+    void createCommandBuffers() {
+        m_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = m_commandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size());
+
+        if (m_deviceTable.vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate command buffers!");
+        }
+    }
+
+    void createComputeCommandBuffers() {
+        m_computeCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = m_commandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = static_cast<uint32_t>(m_computeCommandBuffers.size());
+
+        if (m_deviceTable.vkAllocateCommandBuffers(m_device, &allocInfo, m_computeCommandBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate compute command buffers!");
+        }
+    }
+
     void createSwapChain() {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(m_physicalDevice);
         printSwapChainSupportDetails(swapChainSupport);
@@ -793,17 +830,6 @@ private:
         }
     }
 
-    void createCommandPool() {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = m_queueFamilyIdx;
-
-        if (m_deviceTable.vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create command pool!");
-        }
-    }
-
     void createShaderStorageBuffers() {
         // Initialize particles
         std::default_random_engine rndEngine(static_cast<uint64_t>(time(nullptr)));
@@ -948,32 +974,6 @@ private:
         }
     }
 
-    void createCommandBuffers() {
-        m_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = m_commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size());
-
-        if (m_deviceTable.vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate command buffers!");
-        }
-    }
-
-    void createComputeCommandBuffers() {
-        m_computeCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = m_commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = static_cast<uint32_t>(m_computeCommandBuffers.size());
-
-        if (m_deviceTable.vkAllocateCommandBuffers(m_device, &allocInfo, m_computeCommandBuffers.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate compute command buffers!");
-        }
-    }
-
     void createSyncObjects() {
         // 创建一个timeline semaphore用于图形/计算命令缓冲区之间的同步
         VkSemaphoreTypeCreateInfo timelineCreateInfo{};
@@ -1026,10 +1026,10 @@ private:
         m_deviceTable.vkResetFences(m_device, 1, &m_inFlightFences[m_frameIndex]);
 
         // Update timeline value for this frame
-		uint64_t computeWaitValue    = m_timelineValue;
-		uint64_t computeSignalValue  = ++m_timelineValue;
-		uint64_t graphicsWaitValue   = computeSignalValue;
-		uint64_t graphicsSignalValue = ++m_timelineValue;
+        uint64_t computeWaitValue    = m_timelineValue;
+        uint64_t computeSignalValue  = ++m_timelineValue;
+        uint64_t graphicsWaitValue   = computeSignalValue;
+        uint64_t graphicsSignalValue = ++m_timelineValue;
 
         updateUniformBuffer(m_frameIndex);
 
@@ -1627,6 +1627,10 @@ private:
     uint32_t                     m_queueFamilyIdx;
     VkQueue                      m_queue;
 
+    VkCommandPool                m_commandPool;
+    std::vector<VkCommandBuffer> m_commandBuffers;
+    std::vector<VkCommandBuffer> m_computeCommandBuffers;
+
     VkSwapchainKHR               m_swapChain;
     uint32_t                     m_swapChainImageCount { 0 };
     std::vector<VkImage>         m_swapChainImages;
@@ -1650,10 +1654,6 @@ private:
 
     VkDescriptorPool             m_descriptorPool;
     std::vector<VkDescriptorSet> m_computeDescriptorSets;
-
-    VkCommandPool                m_commandPool;
-    std::vector<VkCommandBuffer> m_commandBuffers;
-    std::vector<VkCommandBuffer> m_computeCommandBuffers;
 
     VkSemaphore                  m_semaphore;
     uint64_t                     m_timelineValue { 0 };

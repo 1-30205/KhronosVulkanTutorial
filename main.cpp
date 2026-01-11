@@ -171,6 +171,8 @@ private:
         pickPhysicalDevice();
         createLogicalDevice();
         createVMA();
+        createCommandPool();
+        createCommandBuffers();
         createSwapChain();
         createImageViews();
         createColorResources();
@@ -178,7 +180,6 @@ private:
         createDepthResources();
         createDescriptorSetLayout();
         createGraphicsPipeline();
-        createCommandPool();
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
@@ -188,7 +189,6 @@ private:
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
-        createCommandBuffers();
         createSyncObjects();
     }
 
@@ -595,6 +595,30 @@ private:
         }
     }
 
+    void createCommandPool() {
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.queueFamilyIndex = m_queueFamilyIdx;
+
+        if (m_deviceTable.vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create command pool!");
+        }
+    }
+
+    void createCommandBuffers() {
+        m_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = m_commandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size());
+
+        if (m_deviceTable.vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate command buffers!");
+        }
+    }
+
     void createSwapChain() {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(m_physicalDevice);
         printSwapChainSupportDetails(swapChainSupport);
@@ -836,17 +860,6 @@ private:
 
         m_deviceTable.vkDestroyShaderModule(m_device, fragShaderModule, nullptr);
         m_deviceTable.vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
-    }
-
-    void createCommandPool() {
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = m_queueFamilyIdx;
-
-        if (m_deviceTable.vkCreateCommandPool(m_device, &poolInfo, nullptr, &m_commandPool) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create command pool!");
-        }
     }
 
     void createColorResources() {
@@ -1518,19 +1531,6 @@ private:
         throw std::runtime_error("failed to find suitable memory type!");
     }
 
-    void createCommandBuffers() {
-        m_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = m_commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = static_cast<uint32_t>(m_commandBuffers.size());
-
-        if (m_deviceTable.vkAllocateCommandBuffers(m_device, &allocInfo, m_commandBuffers.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate command buffers!");
-        }
-    }
-
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1711,7 +1711,7 @@ private:
 
     void drawFrame() {
         // Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex,
-		//       while renderFinishedSemaphores is indexed by imageIndex
+        //       while renderFinishedSemaphores is indexed by imageIndex
         VkResult fenceResult = m_deviceTable.vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
         if (fenceResult != VK_SUCCESS) {
             throw std::runtime_error("failed to wait for fences!");
@@ -2027,6 +2027,9 @@ private:
     uint32_t                     m_queueFamilyIdx;
     VkQueue                      m_queue;
 
+    VkCommandPool                m_commandPool;
+    std::vector<VkCommandBuffer> m_commandBuffers;
+
     VkSwapchainKHR               m_swapChain;
     uint32_t                     m_swapChainImageCount { 0 };
     std::vector<VkImage>         m_swapChainImages;
@@ -2046,8 +2049,6 @@ private:
     VkDescriptorSetLayout        m_descriptorSetLayout;
     VkPipelineLayout             m_pipelineLayout;
     VkPipeline                   m_graphicsPipeline;
-
-    VkCommandPool                m_commandPool;
 
     uint32_t                     m_mipLevels;
     VkImage                      m_textureImage;
@@ -2069,7 +2070,6 @@ private:
     VkDescriptorPool             m_descriptorPool;
     std::vector<VkDescriptorSet> m_descriptorSets;
 
-    std::vector<VkCommandBuffer> m_commandBuffers;
     // fences are used to keep the CPU and GPU in sync with each-other
     std::vector<VkFence>         m_inFlightFences;
     // semaphores are used to specify the execution order of operations on the GPU
